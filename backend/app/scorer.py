@@ -41,15 +41,19 @@ DIMENSIONS = [
 
 SCORE_THRESHOLD = 8.0 * len(DIMENSIONS) * 0.55  # ~44/80, i.e. "8+/10 average" bar
 
+# Uses plain __TOKEN__ substitution rather than str.format(): the prompt is
+# full of literal JSON braces (as few-shot examples), and format() tries to
+# parse every one of those as a field -- a real bug caught in testing
+# (KeyError: '"i"' from the un-escaped example on the "numeric index" line).
 SYSTEM_PROMPT = """You are an expert short-form video editor who finds viral \
 moments in long transcripts for TikTok/Reels/Shorts.
 
 You will receive a transcript as a JSON array of words, each with a numeric \
 index: [{"i": 0, "w": "hello"}, {"i": 1, "w": "world"}, ...].
 
-Find up to {max_clips} self-contained segments (each {min_s}-{max_s} seconds \
-long at ~2.3 words/sec) that would work as standalone viral clips: a strong \
-hook in the first 3 seconds, a complete narrative/idea arc, and a payoff.
+Find up to __MAX_CLIPS__ self-contained segments (each __MIN_S__-__MAX_S__ \
+seconds long at ~2.3 words/sec) that would work as standalone viral clips: a \
+strong hook in the first 3 seconds, a complete narrative/idea arc, and a payoff.
 
 Score each candidate 0-10 on EACH of these dimensions:
 - hook: does it grab attention in the first sentence?
@@ -62,10 +66,10 @@ Score each candidate 0-10 on EACH of these dimensions:
 - arc_completion: has a clear beginning, middle, and payoff/punchline (not cut mid-thought)?
 
 Respond with ONLY a JSON array (no markdown, no prose) of objects:
-[{{"start_index": int, "end_index": int, "title": "short catchy title", \
-"hook_text": "the exact opening line", "scores": {{"hook": n, "shock": n, \
+[{"start_index": int, "end_index": int, "title": "short catchy title", \
+"hook_text": "the exact opening line", "scores": {"hook": n, "shock": n, \
 "humor": n, "controversy": n, "insight": n, "emotion": n, "energy": n, \
-"arc_completion": n}}}}]
+"arc_completion": n}}]
 
 start_index/end_index MUST be indices from the input array (integers you \
 saw in "i"), never timestamps or made-up numbers."""
@@ -115,17 +119,17 @@ def _llm_score(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
     client = OpenAI(base_url=settings.LLM_BASE_URL, api_key=settings.LLM_API_KEY)
 
     indexed = [{"i": i, "w": w["word"]} for i, w in enumerate(words)]
+    prompt = (
+        SYSTEM_PROMPT.replace("__MAX_CLIPS__", str(settings.MAX_CLIPS_PER_VIDEO))
+        .replace("__MIN_S__", str(settings.MIN_CLIP_SECONDS))
+        .replace("__MAX_S__", str(settings.MAX_CLIP_SECONDS))
+    )
     # Chunk very long transcripts to stay within context; process in ~2500-word windows.
     chunk_size = 2500
     raw_candidates: list[dict[str, Any]] = []
 
     for offset in range(0, len(indexed), chunk_size):
         chunk = indexed[offset : offset + chunk_size]
-        prompt = SYSTEM_PROMPT.format(
-            max_clips=settings.MAX_CLIPS_PER_VIDEO,
-            min_s=settings.MIN_CLIP_SECONDS,
-            max_s=settings.MAX_CLIP_SECONDS,
-        )
         resp = client.chat.completions.create(
             model=settings.LLM_MODEL,
             messages=[
@@ -133,6 +137,9 @@ def _llm_score(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 {"role": "user", "content": json.dumps(chunk)},
             ],
             temperature=0.4,
+            stream=False,  # some OpenAI-compatible proxies (e.g. 9router) stream by
+                           # default when this is omitted, which the SDK can't parse
+                           # as a single response -- pin it explicitly.
         )
         content = resp.choices[0].message.content or "[]"
         raw_candidates.extend(_parse_llm_json(content))
@@ -160,15 +167,42 @@ def _llm_score(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _parse_llm_json(content: str) -> list[dict[str, Any]]:
+    """Real models are inconsistent about wrapping JSON in code fences or
+    adding a stray sentence before/after it (confirmed empirically: the
+    same prompt/model produced clean fenced JSON on one call and something
+    the naive fence-stripper couldn't parse on another). Try increasingly
+    permissive strategies rather than assuming one exact shape."""
     content = content.strip()
-    # strip markdown code fences if the model added them anyway
-    content = re.sub(r"^```(json)?|```$", "", content, flags=re.MULTILINE).strip()
+
+    # 1. as-is
+    data = _try_json_array(content)
+    if data is not None:
+        return data
+
+    # 2. strip markdown code fences
+    fenced = re.sub(r"^```(json)?|```$", "", content, flags=re.MULTILINE).strip()
+    data = _try_json_array(fenced)
+    if data is not None:
+        return data
+
+    # 3. grab the outermost [...] span, in case the model added prose
+    # before/after the array (e.g. "Here are the clips: [...]")
+    match = re.search(r"\[.*\]", content, flags=re.DOTALL)
+    if match:
+        data = _try_json_array(match.group(0))
+        if data is not None:
+            return data
+
+    log.warning("could not parse LLM JSON output; raw content: %r", content[:500])
+    return []
+
+
+def _try_json_array(text: str) -> list[dict[str, Any]] | None:
     try:
-        data = json.loads(content)
-        return data if isinstance(data, list) else []
+        data = json.loads(text)
     except json.JSONDecodeError:
-        log.warning("could not parse LLM JSON output")
-        return []
+        return None
+    return data if isinstance(data, list) else None
 
 
 _FILLERS = {"um", "uh", "like", "you", "know", "so", "the", "a", "and"}

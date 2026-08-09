@@ -6,6 +6,11 @@ python-multipart==0.0.9
 # pinning an old version reliably breaks downloads within months.
 yt-dlp>=2026.7.4
 faster-whisper==1.0.3
+requests==2.32.3  # faster_whisper/utils.py imports this directly but doesn't
+                  # declare it -- newer huggingface_hub versions dropped it as
+                  # a transitive dep, so it must be pinned explicitly here
 opencv-python-headless==4.10.0.84
 numpy==1.26.4
-openai==1.51.0
+# openai<1.55ish breaks on httpx>=0.28 (removed Client(proxies=...), which the
+# old SDK still passed) -- pin high enough to avoid that incompatibility.
+openai>=2.53.0
