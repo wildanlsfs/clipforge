@@ -1,0 +1,47 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      DATA_DIR: /data
+      TMP_DIR: /data/tmp
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      WHISPER_MODEL_SIZE: ${WHISPER_MODEL_SIZE:-small}
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+      MIN_CLIP_SECONDS: ${MIN_CLIP_SECONDS:-20}
+      MAX_CLIP_SECONDS: ${MAX_CLIP_SECONDS:-90}
+      MAX_CLIPS_PER_VIDEO: ${MAX_CLIPS_PER_VIDEO:-6}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    volumes:
+      - clipforge_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    # no ports: published here on purpose -- only the frontend's nginx
+    # (which proxies /api/*) is reachable from outside the compose network.
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"   # Coolify: point the app's domain at this container, port 80
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  clipforge_data:
+    driver: local
