@@ -74,14 +74,23 @@ YuNet face model on image build — subsequent runs are fast.
 cd backend
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-ffmpeg -version   # must be installed on the host, with libass
+ffmpeg -version   # must be installed on the host, with libass -- see note below
 uvicorn app.main:app --reload --port 8000
 
 # frontend (separate shell)
 cd frontend
 npm install
-npm run dev        # http://localhost:5173, proxies /api -> :8000
+BACKEND_URL=http://localhost:8000 npm run dev   # http://localhost:5173
 ```
+
+> **macOS + Homebrew note:** Homebrew's plain `ffmpeg` formula deliberately
+> excludes libass (no caption burning) and libfreetype (no `drawtext`
+> either) — confirmed by hitting this directly: caption burning failed with
+> a filter error against a stock `brew install ffmpeg`. Install
+> `brew install ffmpeg-full` instead (keg-only, won't conflict with a
+> regular `ffmpeg` other projects may depend on) and point the backend at
+> it: `FFMPEG_BIN=/usr/local/opt/ffmpeg-full/bin/ffmpeg`. Not an issue in
+> Docker — Debian's apt `ffmpeg` package includes libass by default.
 
 ## Configuration reference
 
