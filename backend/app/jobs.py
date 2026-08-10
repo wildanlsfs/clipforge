@@ -7,12 +7,23 @@ poll status.
 from __future__ import annotations
 
 import logging
+import subprocess
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 
 from . import clipper, db, downloader, scorer, transcriber
 
 log = logging.getLogger("clipforge.jobs")
+
+
+def _describe_error(exc: Exception) -> str:
+    """subprocess.CalledProcessError's default str() is just the exit code --
+    the actually useful part (ffmpeg's stderr) is easy to lose. Surface it."""
+    if isinstance(exc, subprocess.CalledProcessError) and exc.stderr:
+        stderr = exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes) else str(exc.stderr)
+        tail = "\n".join(stderr.strip().splitlines()[-8:])  # last few lines are usually the actual error
+        return f"{exc}\n{tail}"
+    return str(exc)
 
 _executor = ThreadPoolExecutor(max_workers=2)
 
@@ -69,9 +80,9 @@ def _run_pipeline(project_id: str, url: str, aspect: str, burn_captions: bool) -
                 db.update_clip(clip_id, status="done", output_path=out_path)
             except Exception as exc:  # noqa: BLE001
                 log.exception("clip render failed for %s", clip_id)
-                db.update_clip(clip_id, status="error", error=str(exc))
+                db.update_clip(clip_id, status="error", error=_describe_error(exc))
 
         db.update_project(project_id, status="done")
     except Exception as exc:  # noqa: BLE001
         log.error("pipeline failed for project %s:\n%s", project_id, traceback.format_exc())
-        db.update_project(project_id, status="error", error=str(exc))
+        db.update_project(project_id, status="error", error=_describe_error(exc))

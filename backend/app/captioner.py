@@ -12,6 +12,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from .config import settings
+
 ASS_HEADER = """[Script Info]
 ScriptType: v4.00+
 PlayResX: {w}
@@ -61,7 +63,7 @@ def burn_captions(video_path: str, ass_path: str, out_path: str) -> str:
     # escape for ffmpeg filter arg: colons and backslashes need escaping in the path
     escaped = ass_path.replace("\\", "\\\\").replace(":", "\\:")
     cmd = [
-        "ffmpeg", "-y",
+        settings.FFMPEG_BIN, "-y",
         "-i", video_path,
         "-vf", f"ass={escaped}",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",

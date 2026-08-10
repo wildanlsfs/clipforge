@@ -22,6 +22,8 @@ from typing import Optional
 import cv2
 import numpy as np
 
+from .config import settings
+
 log = logging.getLogger("clipforge.reframer")
 
 ASPECTS = {"9:16": (9, 16), "1:1": (1, 1), "16:9": (16, 9), "4:5": (4, 5)}
@@ -152,7 +154,7 @@ def render_reframed(
 
     # mux trimmed original audio back on + final encode to a widely-compatible mp4
     cmd = [
-        "ffmpeg", "-y",
+        settings.FFMPEG_BIN, "-y",
         "-i", silent_path,
         "-ss", str(start_s), "-to", str(end_s), "-i", source_path,
         "-map", "0:v:0", "-map", "1:a:0?",

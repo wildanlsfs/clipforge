@@ -45,6 +45,15 @@ class Settings:
     MAX_CLIPS_PER_VIDEO: int = int(os.getenv("MAX_CLIPS_PER_VIDEO", "6"))
     DEFAULT_ASPECT: str = os.getenv("DEFAULT_ASPECT", "9:16")
 
+    # --- ffmpeg ---
+    # Override if the system "ffmpeg" on PATH lacks libass (caption burning
+    # will fail with a filter error otherwise). The Docker image's ffmpeg
+    # (apt, Debian) has libass by default, so this is normally left alone;
+    # it exists for local/native dev on machines with a stripped ffmpeg
+    # build (e.g. Homebrew's plain `ffmpeg` formula, which excludes it --
+    # use `ffmpeg-full` there instead and point this at its binary).
+    FFMPEG_BIN: str = os.getenv("FFMPEG_BIN", "ffmpeg")
+
     # --- server ---
     CORS_ORIGINS: list[str] = [
         o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()
