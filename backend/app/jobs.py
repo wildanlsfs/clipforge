@@ -28,14 +28,16 @@ def _describe_error(exc: Exception) -> str:
 _executor = ThreadPoolExecutor(max_workers=2)
 
 
-def submit(project_id: str, url: str, aspect: str, burn_captions: bool) -> None:
-    _executor.submit(_run_pipeline, project_id, url, aspect, burn_captions)
+def submit(project_id: str, url: str, aspect: str, burn_captions: bool, cookies: str | None = None) -> None:
+    _executor.submit(_run_pipeline, project_id, url, aspect, burn_captions, cookies)
 
 
-def _run_pipeline(project_id: str, url: str, aspect: str, burn_captions: bool) -> None:
+def _run_pipeline(
+    project_id: str, url: str, aspect: str, burn_captions: bool, cookies: str | None = None
+) -> None:
     try:
         db.update_project(project_id, status="downloading")
-        meta = downloader.download_source(url, project_id)
+        meta = downloader.download_source(url, project_id, cookies=cookies)
         db.update_project(
             project_id,
             title=meta["title"],

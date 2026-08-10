@@ -35,6 +35,16 @@ class CreateProjectRequest(BaseModel):
     url: str = Field(..., description="YouTube (or yt-dlp supported) URL")
     aspect: str = Field("9:16", pattern="^(9:16|1:1|16:9|4:5)$")
     burn_captions: bool = True
+    cookies: str | None = Field(
+        None,
+        description=(
+            "Optional: raw Netscape-format cookies.txt content from the "
+            "caller's own browser, so multiple people sharing one instance "
+            "each authenticate YouTube downloads as themselves. Used only "
+            "for this job's download, never stored in the database. Falls "
+            "back to the server's YTDLP_COOKIES env var if omitted."
+        ),
+    )
 
 
 @app.get("/api/health")
@@ -47,7 +57,7 @@ def create_project(req: CreateProjectRequest):
     if not req.url.strip():
         raise HTTPException(400, "url is required")
     project_id = db.create_project(req.url.strip())
-    jobs.submit(project_id, req.url.strip(), req.aspect, req.burn_captions)
+    jobs.submit(project_id, req.url.strip(), req.aspect, req.burn_captions, cookies=req.cookies)
     return {"id": project_id}
 
 

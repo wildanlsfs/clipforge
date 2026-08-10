@@ -42,10 +42,15 @@ export const api = {
   health: () => req<{ status: string; llm_enabled: boolean }>("/health"),
   listProjects: () => req<Project[]>("/projects"),
   getProject: (id: string) => req<Project>(`/projects/${id}`),
-  createProject: (url: string, aspect: string, burnCaptions: boolean) =>
+  createProject: (url: string, aspect: string, burnCaptions: boolean, cookies?: string) =>
     req<{ id: string }>("/projects", {
       method: "POST",
-      body: JSON.stringify({ url, aspect, burn_captions: burnCaptions }),
+      body: JSON.stringify({
+        url,
+        aspect,
+        burn_captions: burnCaptions,
+        cookies: cookies?.trim() || null,
+      }),
     }),
   deleteProject: (id: string) => req(`/projects/${id}`, { method: "DELETE" }),
   downloadUrl: (clipId: string) => `${BASE}/clips/${clipId}/download`,

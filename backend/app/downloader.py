@@ -12,10 +12,18 @@ from .config import settings
 log = logging.getLogger("clipforge.downloader")
 
 
-def download_source(url: str, project_id: str) -> dict[str, Any]:
+def download_source(url: str, project_id: str, cookies: str | None = None) -> dict[str, Any]:
     """Download a YouTube (or any yt-dlp-supported) URL to data/sources/<id>.mp4.
 
-    Returns metadata dict: {path, title, duration}.
+    `cookies`, if given, is the raw content of a Netscape-format cookies.txt
+    export from the *requesting user's own browser* -- multiple people can
+    share one ClipForge instance and each authenticate downloads as
+    themselves rather than one shared server-wide identity. It's written to
+    a per-project temp file only for the duration of this download and
+    deleted immediately after (success or failure) -- never persisted to
+    the database or kept around longer than the single yt-dlp call needs
+    it. Falls back to the server-wide YTDLP_COOKIES env var if the caller
+    didn't supply their own.
     """
     out_dir = settings.DATA_DIR / "sources"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -33,22 +41,32 @@ def download_source(url: str, project_id: str) -> dict[str, Any]:
         "retries": 3,
     }
 
-    cookies_path = settings.cookies_path()
-    if cookies_path:
-        ydl_opts["cookiefile"] = cookies_path
+    per_request_cookie_path: Path | None = None
+    if cookies and cookies.strip():
+        per_request_cookie_path = settings.TMP_DIR / f"{project_id}_cookies.txt"
+        per_request_cookie_path.write_text(cookies, encoding="utf-8")
+        ydl_opts["cookiefile"] = str(per_request_cookie_path)
     else:
-        log.warning(
-            "no YTDLP_COOKIES configured -- YouTube frequently blocks "
-            "unauthenticated requests from datacenter/VPS IPs with a "
-            "'Sign in to confirm you're not a bot' error"
-        )
+        fallback = settings.cookies_path()
+        if fallback:
+            ydl_opts["cookiefile"] = fallback
+        else:
+            log.warning(
+                "no cookies (per-request or YTDLP_COOKIES fallback) -- YouTube "
+                "frequently blocks unauthenticated requests from datacenter/VPS "
+                "IPs with a 'Sign in to confirm you're not a bot' error"
+            )
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        path = Path(ydl.prepare_filename(info))
-        if not path.exists():
-            # merge_output_format may have changed the extension
-            path = path.with_suffix(".mp4")
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            path = Path(ydl.prepare_filename(info))
+            if not path.exists():
+                # merge_output_format may have changed the extension
+                path = path.with_suffix(".mp4")
+    finally:
+        if per_request_cookie_path is not None:
+            per_request_cookie_path.unlink(missing_ok=True)
 
     return {
         "path": str(path),

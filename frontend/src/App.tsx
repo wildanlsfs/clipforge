@@ -4,6 +4,28 @@ import Tutorial from "./Tutorial";
 
 const ACTIVE_STATUSES = new Set(["queued", "downloading", "transcribing", "scoring", "rendering"]);
 
+// Stored only in this browser, sent directly to this server per-request,
+// never persisted server-side (see downloader.py) -- lets multiple people
+// share one instance without stepping on each other's YouTube identity.
+const COOKIES_KEY = "clipforge_ytdlp_cookies";
+
+function loadStoredCookies(): string {
+  try {
+    return localStorage.getItem(COOKIES_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function saveStoredCookies(value: string) {
+  try {
+    if (value.trim()) localStorage.setItem(COOKIES_KEY, value);
+    else localStorage.removeItem(COOKIES_KEY);
+  } catch {
+    // localStorage unavailable (private browsing etc.) -- not worth failing over
+  }
+}
+
 const STATUS_LABEL: Record<string, string> = {
   queued: "Queued",
   downloading: "Downloading source",
@@ -136,6 +158,8 @@ export default function App() {
   const [submitting, setSubmitting] = useState(false);
   const [llmEnabled, setLlmEnabled] = useState<boolean | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [cookies, setCookies] = useState(() => loadStoredCookies());
+  const [showCookies, setShowCookies] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -166,7 +190,7 @@ export default function App() {
     setSubmitting(true);
     setErr(null);
     try {
-      await api.createProject(url.trim(), aspect, burnCaptions);
+      await api.createProject(url.trim(), aspect, burnCaptions, cookies);
       setUrl("");
       await refresh();
     } catch (e: any) {
@@ -241,6 +265,39 @@ export default function App() {
           </button>
         </div>
         {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
+
+        <div className="mt-4 border-t border-neutral-800 pt-3">
+          <button
+            type="button"
+            onClick={() => setShowCookies((s) => !s)}
+            className="text-xs font-medium text-neutral-500 hover:text-neutral-300"
+          >
+            {showCookies ? "▾" : "▸"} Your YouTube cookies (optional
+            {cookies.trim() ? ", saved in this browser" : ""})
+          </button>
+          {showCookies && (
+            <div className="mt-2">
+              <p className="mb-1.5 text-xs text-neutral-500">
+                If downloads fail with "Sign in to confirm you're not a bot", paste your own exported
+                cookies.txt content here (e.g. from the "Get cookies.txt LOCALLY" browser extension,
+                while logged into youtube.com). Downloads for your projects will authenticate as you
+                instead of relying on a server-wide default. Stored only in this browser, sent directly
+                to this server per-request, never saved in the database.
+              </p>
+              <textarea
+                value={cookies}
+                onChange={(e) => {
+                  setCookies(e.target.value);
+                  saveStoredCookies(e.target.value);
+                }}
+                placeholder="# Netscape HTTP Cookie File&#10;.youtube.com  TRUE  /  ..."
+                rows={4}
+                spellCheck={false}
+                className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 font-mono text-xs text-neutral-300 outline-none focus:border-accent"
+              />
+            </div>
+          )}
+        </div>
       </form>
 
       <div className="space-y-5">

@@ -96,17 +96,24 @@ Docker layer cache and are much faster unless `requirements.txt` /
   happening on a real deploy: works fine from a residential dev machine,
   fails immediately from a VPS. YouTube blocks unauthenticated requests
   from datacenter/cloud IP ranges much more aggressively than home
-  connections. Fix: set `YTDLP_COOKIES` (see `.env.example`) to the full
-  contents of a Netscape-format `cookies.txt` export from your own
-  logged-in YouTube session — e.g. the "Get cookies.txt LOCALLY" Chrome
-  extension, exported while on youtube.com, pasted as one Coolify env var.
-  No file upload or volume mounting needed; the backend writes it to the
-  persistent `/data` volume itself on startup. **Caveat, stated plainly:**
-  this authenticates as your real Google account for every download the
-  app makes. That's the standard way self-hosted yt-dlp tools work around
-  this block, but it does mean automated activity is tied to your account
-  — use an account you're comfortable with for that, and expect to
-  re-export cookies periodically since YouTube sessions expire.
+  connections. Two ways to fix it:
+  - **Per-user (recommended if more than one person uses this instance):**
+    each person pastes their own `cookies.txt` export directly in the UI,
+    under "Your YouTube cookies" below the form. It's stored only in their
+    browser and sent per-request — never written to the database — so
+    everyone authenticates downloads as themselves rather than sharing one
+    identity.
+  - **Server-wide fallback:** set `YTDLP_COOKIES` (see `.env.example`) as
+    a Coolify env var to the full contents of a `cookies.txt` export —
+    used automatically for anyone who hasn't set their own. No file
+    upload or volume mounting needed; the backend writes it to the
+    persistent `/data` volume itself on startup.
+  - **Caveat, stated plainly, applies either way:** this authenticates as
+    a real Google account for every download made under it. That's the
+    standard way self-hosted yt-dlp tools work around this block, but it
+    ties automated activity to that account — use one you're comfortable
+    with, and expect to re-export cookies periodically since sessions
+    expire.
 - **Frontend container shows `(unhealthy)` / domain returns "no available
   server" despite a successful build** — Coolify's proxy won't route to a
   container Docker considers unhealthy, even if the app inside is actually

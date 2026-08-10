@@ -22,7 +22,7 @@ const STEPS = [
 const FAQ: { q: string; a: string }[] = [
   {
     q: "A project failed with “Sign in to confirm you’re not a bot”",
-    a: "YouTube is blocking the server's IP — common on VPS/cloud hosting, much less common on a home connection. The server admin needs to set a YTDLP_COOKIES environment variable with an exported YouTube cookies.txt. This is a server-side config issue, not something fixable from this page.",
+    a: "YouTube is blocking the request — common on VPS/cloud hosting, much less common on a home connection. Fix it yourself: open “Your YouTube cookies” below the form and paste an exported cookies.txt from your own logged-in browser session (the “Get cookies.txt LOCALLY” extension works well). It's saved only in this browser and used only for your own downloads.",
   },
   {
     q: "A project finished with “No clip-worthy moments found”",
