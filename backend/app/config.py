@@ -45,6 +45,16 @@ class Settings:
     MAX_CLIPS_PER_VIDEO: int = int(os.getenv("MAX_CLIPS_PER_VIDEO", "6"))
     DEFAULT_ASPECT: str = os.getenv("DEFAULT_ASPECT", "9:16")
 
+    # --- yt-dlp ---
+    # YouTube frequently challenges requests from datacenter/VPS IPs with
+    # "Sign in to confirm you're not a bot" (confirmed live: worked fine
+    # from a residential dev machine, failed immediately from the VPS).
+    # Paste the *contents* of a Netscape-format cookies.txt export here
+    # (e.g. from the "Get cookies.txt LOCALLY" browser extension, exported
+    # while logged into youtube.com) as a Coolify env var -- no file/volume
+    # access on the server needed. Leave unset to try unauthenticated.
+    YTDLP_COOKIES: str = os.getenv("YTDLP_COOKIES", "")
+
     # --- ffmpeg ---
     # Override if the system "ffmpeg" on PATH lacks libass (caption burning
     # will fail with a filter error otherwise). The Docker image's ffmpeg
@@ -65,6 +75,18 @@ class Settings:
         self.TMP_DIR.mkdir(parents=True, exist_ok=True)
         (self.DATA_DIR / "clips").mkdir(parents=True, exist_ok=True)
         (self.DATA_DIR / "sources").mkdir(parents=True, exist_ok=True)
+
+    def cookies_path(self) -> str | None:
+        """Materializes YTDLP_COOKIES (raw env var content) to a file on the
+        persistent data volume and returns its path, or None if no cookies
+        were configured. yt-dlp needs an actual file, not a string. Rewrites
+        on every call (cheap, tiny file) so an updated env var on redeploy
+        -- cookies expire -- doesn't get shadowed by a stale copy."""
+        if not self.YTDLP_COOKIES.strip():
+            return None
+        path = self.DATA_DIR / "cookies.txt"
+        path.write_text(self.YTDLP_COOKIES, encoding="utf-8")
+        return str(path)
 
 
 settings = Settings()

@@ -33,6 +33,16 @@ def download_source(url: str, project_id: str) -> dict[str, Any]:
         "retries": 3,
     }
 
+    cookies_path = settings.cookies_path()
+    if cookies_path:
+        ydl_opts["cookiefile"] = cookies_path
+    else:
+        log.warning(
+            "no YTDLP_COOKIES configured -- YouTube frequently blocks "
+            "unauthenticated requests from datacenter/VPS IPs with a "
+            "'Sign in to confirm you're not a bot' error"
+        )
+
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
         path = Path(ydl.prepare_filename(info))

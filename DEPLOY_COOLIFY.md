@@ -92,6 +92,30 @@ Docker layer cache and are much faster unless `requirements.txt` /
 
 ## Troubleshooting
 
+- **`Sign in to confirm you're not a bot` on download** — confirmed
+  happening on a real deploy: works fine from a residential dev machine,
+  fails immediately from a VPS. YouTube blocks unauthenticated requests
+  from datacenter/cloud IP ranges much more aggressively than home
+  connections. Fix: set `YTDLP_COOKIES` (see `.env.example`) to the full
+  contents of a Netscape-format `cookies.txt` export from your own
+  logged-in YouTube session — e.g. the "Get cookies.txt LOCALLY" Chrome
+  extension, exported while on youtube.com, pasted as one Coolify env var.
+  No file upload or volume mounting needed; the backend writes it to the
+  persistent `/data` volume itself on startup. **Caveat, stated plainly:**
+  this authenticates as your real Google account for every download the
+  app makes. That's the standard way self-hosted yt-dlp tools work around
+  this block, but it does mean automated activity is tied to your account
+  — use an account you're comfortable with for that, and expect to
+  re-export cookies periodically since YouTube sessions expire.
+- **Frontend container shows `(unhealthy)` / domain returns "no available
+  server" despite a successful build** — Coolify's proxy won't route to a
+  container Docker considers unhealthy, even if the app inside is actually
+  fine. Check with `docker ps -a` on the server (via Coolify's Terminal
+  tab) for the `(unhealthy)` marker. In this project specifically:
+  `nginx:alpine` doesn't ship `wget` or `curl` by default, so a naive
+  healthcheck command silently fails every time — already fixed here by
+  installing `curl` explicitly in `frontend/Dockerfile`, but worth knowing
+  as a general pattern if you add more healthchecks later.
 - **Build fails fetching the YuNet model** — the Dockerfile's `curl` step
   for the face model has `|| echo ...` so a network hiccup during build
   won't fail the whole image; reframing just falls back to OpenCV's
