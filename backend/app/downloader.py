@@ -110,11 +110,20 @@ def _log_available_formats(ydl_opts: dict[str, Any], url: str) -> None:
     way to tell whether that's a real format-selector bug (like the AV1
     issue this function was added to help catch) or YouTube just not
     returning anything for this IP/session, short of reproducing it by hand
-    with a separate script every time."""
+    with a separate script every time.
+
+    Confirmed live that setting format=None here still isn't enough: yt-dlp
+    falls back to its own default selector and re-raises the exact same
+    "Requested format not available" error if literally nothing is
+    downloadable, which crashed this diagnostic itself instead of reporting
+    anything useful. process=False sidesteps format *selection* entirely --
+    it returns the raw extracted formats list without trying to pick one,
+    so this can't fail the same way the real download attempt did."""
     try:
-        probe_opts = {**ydl_opts, "format": None, "simulate": True, "quiet": True, "no_warnings": True}
+        probe_opts = {**ydl_opts, "simulate": True, "quiet": True, "no_warnings": True}
+        probe_opts.pop("format", None)
         with yt_dlp.YoutubeDL(probe_opts) as probe:
-            info = probe.extract_info(url, download=False)
+            info = probe.extract_info(url, download=False, process=False)
         formats = info.get("formats", []) if info else []
         summary = [
             f"{f.get('format_id')}:{f.get('ext')}:{f.get('vcodec')}:{f.get('height')}p"
