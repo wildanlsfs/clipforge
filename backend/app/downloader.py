@@ -52,6 +52,18 @@ def download_source(url: str, project_id: str, cookies: str | None = None) -> di
         "writesubtitles": False,
         "socket_timeout": 30,
         "retries": 3,
+        # YouTube's "Sign in to confirm you're not a bot" check can trigger
+        # per player-client even with valid cookies -- confirmed live: a
+        # video that had already downloaded successfully once (with
+        # cookies) got blocked again on a later attempt. Asking yt-dlp to
+        # try several client identities in one call (it does this
+        # internally, not as separate retries) measurably improves the
+        # odds one of them isn't currently flagged. "default" (web) uses
+        # cookies properly when present; android/tv sometimes succeed via
+        # a different trust path even when web is blocked. Not a
+        # guaranteed fix -- YouTube's anti-bot system keeps changing, and
+        # as of 2026 even PO-token providers are reported unreliable.
+        "extractor_args": {"youtube": {"player_client": ["default", "android", "tv"]}},
     }
 
     per_request_cookie_path: Path | None = None
