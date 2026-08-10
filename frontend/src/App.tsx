@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, Project, Clip } from "./api";
+import Tutorial from "./Tutorial";
 
 const ACTIVE_STATUSES = new Set(["queued", "downloading", "transcribing", "scoring", "rendering"]);
 
@@ -197,6 +198,8 @@ export default function App() {
           </p>
         )}
       </header>
+
+      <Tutorial />
 
       <form onSubmit={onSubmit} className="mb-8 rounded-2xl border border-neutral-800 bg-neutral-900/50 p-5">
         <label className="mb-1 block text-sm font-medium text-neutral-300">YouTube URL</label>
