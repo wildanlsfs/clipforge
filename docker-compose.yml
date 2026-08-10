@@ -36,7 +36,7 @@ services:
     ports:
       - "3000:80"   # Coolify: point the app's domain at this container, port 80
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:80"]
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
       interval: 30s
       timeout: 10s
       retries: 3
