@@ -5,6 +5,12 @@ python-multipart==0.0.9
 # yt-dlp ships frequent releases to keep pace with YouTube's changes;
 # pinning an old version reliably breaks downloads within months.
 yt-dlp>=2026.7.4
+# Client-side plugin for the bgutil-ytdlp-pot-provider PO-token service
+# (see docker-compose.yml's `pot-provider` service) -- YouTube requires a
+# PO token to return real video/audio formats for a growing set of player
+# clients, and without one it silently hands back storyboard-only formats
+# instead of erroring. yt-dlp auto-detects this plugin once installed.
+bgutil-ytdlp-pot-provider>=1.0.0
 faster-whisper==1.0.3
 requests==2.32.3  # faster_whisper/utils.py imports this directly but doesn't
                   # declare it -- newer huggingface_hub versions dropped it as

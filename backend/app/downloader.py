@@ -12,6 +12,22 @@ from .config import settings
 log = logging.getLogger("clipforge.downloader")
 
 
+def _extractor_args(player_clients: list[str]) -> dict[str, dict[str, list[str]]]:
+    """Builds the yt-dlp extractor_args dict for a download attempt: which
+    player client identities to try, plus (if configured) the PO-token
+    provider's address so those clients get real video/audio formats back
+    instead of the storyboard-only formats YouTube silently substitutes
+    when it wants a token yt-dlp doesn't have. Requires the
+    bgutil-ytdlp-pot-provider package (see requirements.txt) to be
+    installed -- yt-dlp auto-detects it as a plugin, this just tells it
+    where the companion HTTP server (docker-compose.yml's `pot-provider`
+    service) is listening."""
+    args: dict[str, dict[str, list[str]]] = {"youtube": {"player_client": player_clients}}
+    if settings.POT_PROVIDER_URL.strip():
+        args["youtubepot-bgutilhttp"] = {"base_url": [settings.POT_PROVIDER_URL.strip()]}
+    return args
+
+
 def download_source(url: str, project_id: str, cookies: str | None = None) -> dict[str, Any]:
     """Download a YouTube (or any yt-dlp-supported) URL to data/sources/<id>.mp4.
 
@@ -29,21 +45,59 @@ def download_source(url: str, project_id: str, cookies: str | None = None) -> di
     out_dir.mkdir(parents=True, exist_ok=True)
     out_template = str(out_dir / f"{project_id}.%(ext)s")
 
-    ydl_opts = {
-        # Prefer H.264 (avc1) explicitly over AV1/VP9: confirmed live that
-        # yt-dlp's plain "bestvideo[ext=mp4]" can resolve to an AV1-in-mp4
-        # stream (itag 399) even when an H.264-in-mp4 one (itag 137) is
-        # also available -- AV1 format availability/negotiation is flakier
-        # server-side, and OpenCV's bundled ffmpeg (used downstream for
-        # face-tracking) doesn't reliably decode AV1. H.264 is universally
-        # supported by every tool in this pipeline. Falls through to any
-        # codec, then to a fully unrestricted "best" if H.264 isn't offered
-        # for this particular video.
-        "format": (
-            "bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]"
-            "/bestvideo[height<=1080]+bestaudio"
-            "/best[height<=1080]/best"
-        ),
+    # Format selector: Prefer H.264 (avc1) explicitly over AV1/VP9 (OpenCV
+    # face-tracking compatibility), but fall back gracefully to any available video+audio
+    # streams or best single stream.
+    format_selector = (
+        "bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]"
+        "/bestvideo[height<=1080]+bestaudio"
+        "/bestvideo+bestaudio"
+        "/best[height<=1080]"
+        "/best"
+    )
+
+    per_request_cookie_path: Path | None = None
+    cookie_path_to_use: str | None = None
+
+    if cookies and cookies.strip():
+        per_request_cookie_path = settings.TMP_DIR / f"{project_id}_cookies.txt"
+        per_request_cookie_path.write_text(cookies, encoding="utf-8")
+        cookie_path_to_use = str(per_request_cookie_path)
+    else:
+        cookie_path_to_use = settings.cookies_path()
+        if not cookie_path_to_use:
+            log.warning(
+                "no cookies (per-request or YTDLP_COOKIES fallback) -- YouTube "
+                "frequently blocks unauthenticated requests from datacenter/VPS "
+                "IPs with a 'Sign in to confirm you're not a bot' or format error"
+            )
+
+    # Player client fallback strategies:
+    # 'web_creator' (YouTube Studio) + 'web' + 'android' + 'ios' provides maximum compatibility
+    # on datacenter/VPS IPs and with browser cookies.
+    attempts: list[dict[str, Any]] = []
+
+    if cookie_path_to_use:
+        # Pass 1: Try with cookies + web_creator/web/android/ios clients
+        opts = {
+            "format": format_selector,
+            "outtmpl": out_template,
+            "merge_output_format": "mp4",
+            "quiet": True,
+            "no_warnings": True,
+            "noplaylist": True,
+            "writesubtitles": False,
+            "socket_timeout": 30,
+            "retries": 3,
+            "cookiefile": cookie_path_to_use,
+            "extractor_args": _extractor_args(["web_creator", "web", "android", "ios"]),
+        }
+        attempts.append(opts)
+
+    # Pass 2 / Fallback: Unauthenticated pass with web_creator, android, ios clients
+    # (Fixes cases where provided cookies were expired/invalid/blocked by YouTube)
+    fallback_opts = {
+        "format": format_selector,
         "outtmpl": out_template,
         "merge_output_format": "mp4",
         "quiet": True,
@@ -52,47 +106,42 @@ def download_source(url: str, project_id: str, cookies: str | None = None) -> di
         "writesubtitles": False,
         "socket_timeout": 30,
         "retries": 3,
-        # YouTube's "Sign in to confirm you're not a bot" check can trigger
-        # per player-client even with valid cookies -- confirmed live: a
-        # video that had already downloaded successfully once (with
-        # cookies) got blocked again on a later attempt. Asking yt-dlp to
-        # try several client identities in one call (it does this
-        # internally, not as separate retries) measurably improves the
-        # odds one of them isn't currently flagged. "default" (web) uses
-        # cookies properly when present; android/tv sometimes succeed via
-        # a different trust path even when web is blocked. Not a
-        # guaranteed fix -- YouTube's anti-bot system keeps changing, and
-        # as of 2026 even PO-token providers are reported unreliable.
-        "extractor_args": {"youtube": {"player_client": ["default", "android", "tv"]}},
+        "extractor_args": _extractor_args(["web_creator", "android", "ios"]),
     }
+    attempts.append(fallback_opts)
 
-    per_request_cookie_path: Path | None = None
-    if cookies and cookies.strip():
-        per_request_cookie_path = settings.TMP_DIR / f"{project_id}_cookies.txt"
-        per_request_cookie_path.write_text(cookies, encoding="utf-8")
-        ydl_opts["cookiefile"] = str(per_request_cookie_path)
-    else:
-        fallback = settings.cookies_path()
-        if fallback:
-            ydl_opts["cookiefile"] = fallback
-        else:
-            log.warning(
-                "no cookies (per-request or YTDLP_COOKIES fallback) -- YouTube "
-                "frequently blocks unauthenticated requests from datacenter/VPS "
-                "IPs with a 'Sign in to confirm you're not a bot' error"
-            )
+    last_exc: Exception | None = None
+    info: dict[str, Any] | None = None
+    path: Path | None = None
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        for idx, ydl_opts in enumerate(attempts):
+            has_cookies = "cookiefile" in ydl_opts
+            log.info("Attempting YouTube download (attempt %d/%d, cookies=%s)", idx + 1, len(attempts), has_cookies)
             try:
-                info = ydl.extract_info(url, download=True)
-            except yt_dlp.utils.DownloadError:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    path = Path(ydl.prepare_filename(info))
+                    if not path.exists():
+                        # merge_output_format may have changed the extension
+                        path = path.with_suffix(".mp4")
+                    # If download succeeded, break out of retry loop
+                    break
+            except yt_dlp.utils.DownloadError as exc:
+                last_exc = exc
+                log.warning("yt-dlp download attempt %d failed: %s", idx + 1, exc)
                 _log_available_formats(ydl_opts, url)
-                raise
-            path = Path(ydl.prepare_filename(info))
-            if not path.exists():
-                # merge_output_format may have changed the extension
-                path = path.with_suffix(".mp4")
+
+        if info is None or path is None:
+            err_msg = str(last_exc) if last_exc else "Download failed"
+            if "Requested format is not available" in err_msg or "Sign in to confirm" in err_msg or "Please sign in" in err_msg:
+                raise RuntimeError(
+                    f"YouTube blocked format extraction or requires login on this server. "
+                    f"If you provided cookies, they may be expired or invalid. "
+                    f"Please update your YouTube cookies (cookies.txt) or try a different video URL. Original error: {err_msg}"
+                ) from last_exc
+            raise last_exc or RuntimeError("Download failed after all attempts")
+
     finally:
         if per_request_cookie_path is not None:
             per_request_cookie_path.unlink(missing_ok=True)
@@ -132,3 +181,4 @@ def _log_available_formats(ydl_opts: dict[str, Any], url: str) -> None:
         log.error("download failed; %d formats were actually available: %s", len(formats), summary)
     except Exception:  # noqa: BLE001
         log.exception("download failed, and the diagnostic re-probe also failed")
+
