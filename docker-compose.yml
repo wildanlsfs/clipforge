@@ -3,6 +3,8 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
+    depends_on:
+      - pot-provider
     environment:
       DATA_DIR: /data
       TMP_DIR: /data/tmp
@@ -16,6 +18,12 @@ services:
       MAX_CLIP_SECONDS: ${MAX_CLIP_SECONDS:-90}
       MAX_CLIPS_PER_VIDEO: ${MAX_CLIPS_PER_VIDEO:-6}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      # no colon in the fallback: unlike the other ${VAR:-default} entries
+      # above, an explicit empty POT_PROVIDER_URL= in .env must be able to
+      # disable PO-token support (downloader.py checks for a falsy
+      # string) -- `${VAR:-default}` treats empty-and-unset the same, so
+      # it would clobber that override right back to the default.
+      POT_PROVIDER_URL: ${POT_PROVIDER_URL-http://pot-provider:4416}
     volumes:
       - clipforge_data:/data
     healthcheck:
@@ -26,6 +34,16 @@ services:
       start_period: 20s
     # no ports: published here on purpose -- only the frontend's nginx
     # (which proxies /api/*) is reachable from outside the compose network.
+
+  # PO (Proof-of-Origin) token server for yt-dlp -- YouTube increasingly
+  # requires one to hand back real video/audio formats (without it,
+  # certain player clients silently return storyboard-only formats
+  # instead of erroring, which no amount of cookie/client-spoofing fixes).
+  # Internal only, reached by `backend` at http://pot-provider:4416 --
+  # never needs a public domain.
+  pot-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    restart: unless-stopped
 
   frontend:
     build:

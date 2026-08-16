@@ -55,6 +55,16 @@ class Settings:
     # access on the server needed. Leave unset to try unauthenticated.
     YTDLP_COOKIES: str = os.getenv("YTDLP_COOKIES", "")
 
+    # YouTube increasingly requires a PO (Proof-of-Origin) token to hand
+    # back real video/audio formats at all -- without one, some player
+    # clients silently return storyboard-only formats instead of erroring,
+    # which cookies/client-spoofing alone can't fix. Points at the
+    # bgutil-ytdlp-pot-provider HTTP server (see docker-compose.yml's
+    # `pot-provider` service); default matches its in-network service
+    # name, so this normally needs no override. Set to "" to disable
+    # (falls back to whatever client-spoofing achieves on its own).
+    POT_PROVIDER_URL: str = os.getenv("POT_PROVIDER_URL", "http://pot-provider:4416")
+
     # --- ffmpeg ---
     # Override if the system "ffmpeg" on PATH lacks libass (caption burning
     # will fail with a filter error otherwise). The Docker image's ffmpeg

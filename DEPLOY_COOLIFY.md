@@ -1,9 +1,9 @@
 # Deploying ClipForge to Coolify
 
-ClipForge ships as a plain `docker-compose.yml` with two services
-(`backend`, `frontend`) — this maps directly onto Coolify's **Docker
-Compose** resource type. No Coolify API access needed; this is all done
-through the dashboard.
+ClipForge ships as a plain `docker-compose.yml` with three services
+(`backend`, `frontend`, `pot-provider`) — this maps directly onto
+Coolify's **Docker Compose** resource type. No Coolify API access
+needed; this is all done through the dashboard.
 
 ## 1. Push the code somewhere Coolify can pull from
 
@@ -27,8 +27,10 @@ private git server it can reach, or pasting a public repo URL directly.
 1. **Projects → (your project) → + New Resource → Docker Compose**
 2. Point it at your git repo, branch `main`, and the root of the repo
    (where `docker-compose.yml` lives).
-3. Coolify will auto-detect `docker-compose.yml`. Leave the two services
-   (`backend`, `frontend`) as detected.
+3. Coolify will auto-detect `docker-compose.yml`. Leave all three
+   services (`backend`, `frontend`, `pot-provider`) as detected —
+   `pot-provider` runs yt-dlp's PO-token server (see Troubleshooting
+   below) and needs no domain or config of its own.
 
 ## 3. Environment variables
 
@@ -114,6 +116,20 @@ Docker layer cache and are much faster unless `requirements.txt` /
     ties automated activity to that account — use one you're comfortable
     with, and expect to re-export cookies periodically since sessions
     expire.
+- **Download fails with `Requested format is not available`, and the logs
+  show only `sb0/sb1/sb2/sb3:mhtml` (storyboard/thumbnail sprite) formats
+  were offered** — a different symptom from the bot-check above: YouTube
+  let the request through but is refusing to hand back real video/audio
+  formats because it wants a PO (Proof-of-Origin) token, which no
+  cookie or player-client trick can produce on its own. The
+  `pot-provider` service in `docker-compose.yml` (backed by
+  `bgutil-ytdlp-pot-provider`) runs the token server for this — it's
+  wired up by default (`POT_PROVIDER_URL` defaults to
+  `http://pot-provider:4416`, matching the compose network), so this
+  should self-resolve once that service is deployed alongside `backend`.
+  If it's still happening: confirm `pot-provider` shows as running in
+  Coolify (`docker ps` via the Terminal tab) and that `backend`'s logs
+  don't show connection-refused errors reaching it.
 - **Frontend container shows `(unhealthy)` / domain returns "no available
   server" despite a successful build** — Coolify's proxy won't route to a
   container Docker considers unhealthy, even if the app inside is actually
