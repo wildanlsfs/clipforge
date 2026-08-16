@@ -55,6 +55,18 @@ class Settings:
     # access on the server needed. Leave unset to try unauthenticated.
     YTDLP_COOKIES: str = os.getenv("YTDLP_COOKIES", "")
 
+    # Cookies alone don't beat this on every VPS: confirmed live that a
+    # valid, logged-in cookie session still gets "Sign in to confirm
+    # you're not a bot" 100% of the time from a flagged datacenter IP,
+    # while the identical cookies work fine from a residential machine --
+    # YouTube's bot-check increasingly weighs IP reputation over session
+    # validity. Routes yt-dlp's traffic through this proxy (any scheme
+    # yt-dlp's --proxy accepts: http://, socks5://, with optional
+    # user:pass@) so requests come from a non-datacenter IP instead.
+    # Optional and a no-op until set -- most useful with a residential/
+    # mobile proxy provider, or a tunnel back to a home connection.
+    YTDLP_PROXY: str = os.getenv("YTDLP_PROXY", "")
+
     # YouTube increasingly requires a PO (Proof-of-Origin) token to hand
     # back real video/audio formats at all -- without one, some player
     # clients silently return storyboard-only formats instead of erroring,

@@ -72,31 +72,13 @@ def download_source(url: str, project_id: str, cookies: str | None = None) -> di
                 "IPs with a 'Sign in to confirm you're not a bot' or format error"
             )
 
-    # Player client fallback strategies:
-    # 'web_creator' (YouTube Studio) + 'web' + 'android' + 'ios' provides maximum compatibility
-    # on datacenter/VPS IPs and with browser cookies.
-    attempts: list[dict[str, Any]] = []
-
-    if cookie_path_to_use:
-        # Pass 1: Try with cookies + web_creator/web/android/ios clients
-        opts = {
-            "format": format_selector,
-            "outtmpl": out_template,
-            "merge_output_format": "mp4",
-            "quiet": True,
-            "no_warnings": True,
-            "noplaylist": True,
-            "writesubtitles": False,
-            "socket_timeout": 30,
-            "retries": 3,
-            "cookiefile": cookie_path_to_use,
-            "extractor_args": _extractor_args(["web_creator", "web", "android", "ios"]),
-        }
-        attempts.append(opts)
-
-    # Pass 2 / Fallback: Unauthenticated pass with web_creator, android, ios clients
-    # (Fixes cases where provided cookies were expired/invalid/blocked by YouTube)
-    fallback_opts = {
+    # Common options shared by every attempt below. Notably includes
+    # `proxy`, if configured: confirmed live that a *valid, logged-in*
+    # cookie session still gets "Sign in to confirm you're not a bot"
+    # 100% of the time from a flagged VPS IP while working fine from a
+    # residential one, so cookies/client-spoofing alone can't fix that
+    # class of block -- only routing off the flagged IP does.
+    base_opts: dict[str, Any] = {
         "format": format_selector,
         "outtmpl": out_template,
         "merge_output_format": "mp4",
@@ -106,9 +88,29 @@ def download_source(url: str, project_id: str, cookies: str | None = None) -> di
         "writesubtitles": False,
         "socket_timeout": 30,
         "retries": 3,
-        "extractor_args": _extractor_args(["web_creator", "android", "ios"]),
     }
-    attempts.append(fallback_opts)
+    if settings.YTDLP_PROXY.strip():
+        base_opts["proxy"] = settings.YTDLP_PROXY.strip()
+
+    # Player client fallback strategies:
+    # 'web_creator' (YouTube Studio) + 'web' + 'android' + 'ios' provides maximum compatibility
+    # on datacenter/VPS IPs and with browser cookies.
+    attempts: list[dict[str, Any]] = []
+
+    if cookie_path_to_use:
+        # Pass 1: Try with cookies + web_creator/web/android/ios clients
+        attempts.append({
+            **base_opts,
+            "cookiefile": cookie_path_to_use,
+            "extractor_args": _extractor_args(["web_creator", "web", "android", "ios"]),
+        })
+
+    # Pass 2 / Fallback: Unauthenticated pass with web_creator, android, ios clients
+    # (Fixes cases where provided cookies were expired/invalid/blocked by YouTube)
+    attempts.append({
+        **base_opts,
+        "extractor_args": _extractor_args(["web_creator", "android", "ios"]),
+    })
 
     last_exc: Exception | None = None
     info: dict[str, Any] | None = None
@@ -135,9 +137,16 @@ def download_source(url: str, project_id: str, cookies: str | None = None) -> di
         if info is None or path is None:
             err_msg = str(last_exc) if last_exc else "Download failed"
             if "Requested format is not available" in err_msg or "Sign in to confirm" in err_msg or "Please sign in" in err_msg:
+                proxy_hint = (
+                    " Even valid cookies can't beat this from a flagged VPS/datacenter IP "
+                    "-- if this keeps happening on every video, set YTDLP_PROXY to route "
+                    "through a residential/mobile IP instead."
+                    if not settings.YTDLP_PROXY.strip()
+                    else ""
+                )
                 raise RuntimeError(
                     f"YouTube blocked format extraction or requires login on this server. "
-                    f"If you provided cookies, they may be expired or invalid. "
+                    f"If you provided cookies, they may be expired or invalid.{proxy_hint} "
                     f"Please update your YouTube cookies (cookies.txt) or try a different video URL. Original error: {err_msg}"
                 ) from last_exc
             raise last_exc or RuntimeError("Download failed after all attempts")

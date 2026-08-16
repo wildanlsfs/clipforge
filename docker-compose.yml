@@ -18,6 +18,7 @@ services:
       MAX_CLIP_SECONDS: ${MAX_CLIP_SECONDS:-90}
       MAX_CLIPS_PER_VIDEO: ${MAX_CLIPS_PER_VIDEO:-6}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      YTDLP_PROXY: ${YTDLP_PROXY:-}
       # no colon in the fallback: unlike the other ${VAR:-default} entries
       # above, an explicit empty POT_PROVIDER_URL= in .env must be able to
       # disable PO-token support (downloader.py checks for a falsy

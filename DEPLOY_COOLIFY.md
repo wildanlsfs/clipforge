@@ -116,6 +116,17 @@ Docker layer cache and are much faster unless `requirements.txt` /
     ties automated activity to that account — use one you're comfortable
     with, and expect to re-export cookies periodically since sessions
     expire.
+  - **If cookies alone don't fix it** — confirmed live: a *valid,
+    logged-in* cookie session (pasted correctly, working fine when the
+    same cookies are used from a residential machine) still got blocked
+    100% of the time on every video from one VPS. That's YouTube's
+    bot-check weighing IP reputation over session validity — no amount
+    of cookies or player-client spoofing beats that once an IP itself is
+    flagged. If downloads fail on literally every video (not just
+    specific ones), set `YTDLP_PROXY` (see `.env.example`) to route
+    yt-dlp's traffic through a residential/mobile proxy or a tunnel back
+    to a home connection instead. It's off by default and only needed if
+    you've hit this specific case.
 - **Download fails with `Requested format is not available`, and the logs
   show only `sb0/sb1/sb2/sb3:mhtml` (storyboard/thumbnail sprite) formats
   were offered** — a different symptom from the bot-check above: YouTube
