@@ -104,6 +104,9 @@ BACKEND_URL=http://localhost:8000 npm run dev   # http://localhost:5173
 | `MIN_CLIP_SECONDS` / `MAX_CLIP_SECONDS` | `20` / `90` | candidate clip length bounds |
 | `MAX_CLIPS_PER_VIDEO` | `6` | cap on rendered clips per source video |
 | `CORS_ORIGINS` | `*` | tighten this once you have a real domain |
+| `YTDLP_COOKIES` | *(empty)* | server-wide fallback YouTube cookies.txt content; see [Known limitations](#known-limitations) |
+| `YTDLP_PROXY` | *(empty)* | routes yt-dlp through a proxy (`http://`/`socks5://`); see [Known limitations](#known-limitations) |
+| `POT_PROVIDER_URL` | `http://pot-provider:4416` | PO-token server address; set by `docker-compose.yml`'s `pot-provider` service, rarely needs overriding |
 
 ## Deploying to Coolify
 
@@ -120,6 +123,29 @@ multi-speaker diarization / active-speaker switching between multiple faces,
 layout classification (tutorial vs. podcast vs. panel), multiple caption
 style presets, in-browser clip trimming before export, direct posting to
 social platforms.
+
+## Known limitations
+
+**YouTube downloads can fail entirely on some VPS/cloud hosts, even with
+valid cookies.** Confirmed live on a real deploy: a valid, logged-in
+`cookies.txt` session that works fine from a residential machine got
+`Sign in to confirm you're not a bot` on 100% of videos from the VPS.
+YouTube's bot-check weighs the request's IP reputation as much as (or more
+than) session validity — a flagged datacenter IP gets challenged
+regardless of cookies or which yt-dlp player-client identity is used, and
+this is not something the app can route around in software alone.
+
+- `pot-provider` (bundled in `docker-compose.yml`) fixes a *different*,
+  narrower symptom — YouTube silently returning storyboard-only formats
+  because it wants a PO token — but does not fix this IP-reputation block.
+- The only reliable fix, if this happens to you, is `YTDLP_PROXY`: point
+  it at a residential/mobile proxy or a tunnel back to a non-flagged
+  connection so yt-dlp's requests originate from a trusted-looking IP.
+  Off by default (no proxy) — see `.env.example` and
+  [`DEPLOY_COOLIFY.md`](./DEPLOY_COOLIFY.md#troubleshooting) for setup.
+- Whether a given VPS's IP is flagged varies by host/provider and can
+  change over time; there's no way to know in advance short of trying a
+  download after deploy.
 
 ## License
 
